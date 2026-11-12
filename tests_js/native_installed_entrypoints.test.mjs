@@ -2,19 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, writeFile, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { nativeFixture } from './exclusive_file_lock_support.mjs';
 import { initializeJobsFixture } from '../runtime/store/native-jobs.js';
+
+// Windows Node needs its system variables, and resolves the home directory from USERPROFILE.
+const nativeSource = process.platform === 'win32' ? 'windows' : 'posix';
+function isolatedEnvironment(home, environment = {}) {
+  const windows = process.platform === 'win32' ? { USERPROFILE: environment.HOME ?? home, SystemRoot: process.env.SystemRoot,
+    TEMP: process.env.TEMP, TMP: process.env.TMP } : {};
+  return { HOME: home, PATH: '', ...windows, ...environment };
+}
 
 async function installed(t) {
   const fixture = await nativeFixture();
   t.after(fixture.cleanup);
   const plugin = join(fixture.root, 'plugin');
   await cp(new URL('../runtime/', import.meta.url), join(plugin, 'runtime'), { recursive: true });
-  await mkdir(join(plugin, 'native', 'posix'), { recursive: true });
-  await cp(new URL('../native/posix/flock.c', import.meta.url), join(plugin, 'native/posix/flock.c'));
+  await mkdir(join(plugin, 'native', nativeSource), { recursive: true });
+  await cp(new URL(`../native/${nativeSource}/flock.c`, import.meta.url), join(plugin, `native/${nativeSource}/flock.c`));
   const platform = `${process.platform}-${process.arch}-napi8`;
   const lock = join(plugin, 'native', 'packaged-lock', platform);
   await mkdir(lock, { recursive: true });
@@ -31,7 +39,7 @@ function run(plugin, command, args = [], environment = {}) {
   return spawnSync(process.execPath, [join(plugin, 'runtime/cli', command), ...args], {
     cwd: plugin,
     encoding: 'utf8',
-    env: { HOME: plugin.slice(0, plugin.lastIndexOf('/plugin')), PATH: '', ...environment },
+    env: isolatedEnvironment(dirname(plugin), environment),
   });
 }
 
@@ -84,7 +92,7 @@ test('fresh public router completes resume setup and review handoff with Compani
 
   function call(surface, command, args = [], expectedStatus = 0) {
     const result = spawnSync(process.execPath, [join(app, 'command.mjs'), surface, '--root', store, command, ...args],
-      { cwd: work, env: { HOME: work, PATH: '' }, encoding: 'utf8', timeout: 15_000 });
+      { cwd: work, env: isolatedEnvironment(work), encoding: 'utf8', timeout: 15_000 });
     assert.equal(result.status, expectedStatus, result.error?.message ?? result.stderr);
     return result.stdout ? JSON.parse(result.stdout) : null;
   }
