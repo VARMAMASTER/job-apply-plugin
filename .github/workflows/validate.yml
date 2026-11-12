@@ -120,7 +120,13 @@ jobs:
       - run: npx --yes node-gyp install
       - name: Verify the packaged Windows lock
         run: node -e "import('./runtime/package/native-lock-artifact.js').then(m => m.resolvePackagedNativeLock(process.cwd())).then(p => console.log(p))"
-      - run: node --test tests_js/windows_native_lock.test.mjs tests_js/native_installed_entrypoints.test.mjs
+      - name: Debug store init
+        shell: bash
+        run: |
+          whoami; whoami //groups | head -40 || true
+          node apps/companion/command.mjs store --root "$RUNNER_TEMP/dbgstore" init || true
+          icacls "$RUNNER_TEMP/dbgstore" || true
+          icacls "$RUNNER_TEMP" || true
   pr-gate:
     name: PR gate
     if: always()

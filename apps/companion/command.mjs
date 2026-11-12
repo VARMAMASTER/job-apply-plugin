@@ -54,6 +54,6 @@ async function run() {
   process.exitCode = result.code ?? 1;
 }
 try { await run(); }
-catch {
+catch (e) { console.error(e);
   process.stderr.write('Job Apply native Store activation failed\n'); process.exitCode = 2;
 }
